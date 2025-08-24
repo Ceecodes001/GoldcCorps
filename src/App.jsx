@@ -8,7 +8,7 @@ import './App.css'
 import DASHBOARD from './components/profile/dashboard'
 import LOGIN from "./components/homepage1/auth/login"
 import SIGNUP from './components/homepage1/auth/signup'
- 
+ import STOCK from './components/homepage1/stock/stock'
 import PROFILE from './components/profile/profile'
 import { FaGoogle } from 'react-icons/fa'
 // Homepage (your current one-page layout)
@@ -19,6 +19,7 @@ function Home() {
     <>
       <HEADER />
       <BODY />
+     
       <BODYC />
       <STATS />
       <FOOTER />
@@ -39,13 +40,14 @@ function NotFound() {
 
 function App() {
   return (
-    <BrowserRouter basename="/Gold-corps">
+    <BrowserRouter basename="/GoldcCorps">
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<LOGIN />} />
         <Route path="/signup" element={<SIGNUP />} />
         <Route path="/dashboard" element={<DASHBOARD />} />
         <Route path="/profile" element={<PROFILE />} />
+        <Route path="/stock" element={<STOCK />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

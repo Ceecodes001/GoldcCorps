@@ -27,28 +27,33 @@ import {
 const GOLD_PLANS = [
   {
     id: 1,
-    name: "Starter Pack",
-    goldAmount: "5g",
-    price: 350,
+    name: "BEGINNERS PLAN",
+    percentProfit: "5%",
+    price: 19900,
+    duration:"7 days",
+    intrest:"$200",
     description: "Perfect for beginners starting with gold investment"
   },
   {
     id: 2,
-    name: "Wealth Builder",
-    goldAmount: "25g",
-    price: 1700,
+    name: "MASTERS PLAN",
+    percentProfit: "30%",
+    duration: "14 days",
+    price: 999999,
+    intrest:"$20,000",
     description: "Ideal for consistent wealth accumulation"
   },
   {
     id: 3,
-    name: "Premium Portfolio",
-    goldAmount: "100g",
-    price: 6500,
+    name: "PREMIUM PLAN",
+    percentProfit: "50%",
+    price: 1000000,
+    intrest:"Unlimited for 30 days",
     description: "For serious investors building a substantial portfolio"
   }
 ];
 
-const DEPOSIT_ADDRESS = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa";
+const DEPOSIT_ADDRESS = "T9zZ4oxBJNiNxaVF2sdjLrjE4KeZkqzkiv";
 
 // Styles as a JavaScript object (CSS-in-JS)
 const styles = {
@@ -638,42 +643,42 @@ const SettingsSection = ({ user }) => {
 const DepositSection = ({ user, updateBalance }) => {
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [depositConfirmed, setDepositConfirmed] = useState(false);
-  const [receiptUploaded, setReceiptUploaded] = useState(false);
+  const [transactionSuccess, setTransactionSuccess] = useState(false);
+  const [receiptData, setReceiptData] = useState(null);
   const [uploading, setUploading] = useState(false);
 
   const handlePlanSelect = (plan) => {
     setSelectedPlan(plan);
     setDepositConfirmed(false);
-    setReceiptUploaded(false);
+    setTransactionSuccess(false);
+    setReceiptData(null);
   };
 
   const handleConfirmDeposit = () => {
     setDepositConfirmed(true);
   };
 
-  const handleImageUpload = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setReceiptUploaded(true);
-    }
-  };
-
   const handleSubmitReceipt = async () => {
-    if (!receiptUploaded || !selectedPlan) return;
-
+    if (!selectedPlan) return;
     setUploading(true);
 
     try {
-      // Create transaction record
+      // Prepare transaction data
+      const now = new Date();
       const transactionData = {
         userId: user.uid,
         type: "deposit",
         amount: selectedPlan.price,
-        goldAmount: selectedPlan.goldAmount,
+        percentProfit: selectedPlan.percentProfit,
         plan: selectedPlan.name,
-        status: "processing",
-        timestamp: new Date()
+        intrest: selectedPlan.intrest,
+        duration: selectedPlan.duration,
+        description: selectedPlan.description,
+        status: "completed",
+        timestamp: now
       };
 
+      // Store transaction in Firestore
       await addDoc(collection(db, "transactions"), transactionData);
 
       // Update user balance
@@ -683,7 +688,7 @@ const DepositSection = ({ user, updateBalance }) => {
       if (userDoc.exists()) {
         const currentBalance = userDoc.data().balance || 0;
         const currentGold = userDoc.data().goldBalance || 0;
-        const goldToAdd = parseFloat(selectedPlan.goldAmount);
+        const goldToAdd = parseFloat(selectedPlan.percentProfit);
 
         await updateDoc(userRef, {
           balance: currentBalance + selectedPlan.price,
@@ -693,15 +698,19 @@ const DepositSection = ({ user, updateBalance }) => {
         updateBalance(currentBalance + selectedPlan.price, currentGold + goldToAdd);
       }
 
-      alert("Transaction submitted successfully! Your balance has been updated.");
+      // Generate receipt data
+      setReceiptData({
+        plan: selectedPlan.name,
+        amount: selectedPlan.price,
+        date: now.toLocaleDateString(),
+        time: now.toLocaleTimeString(),
+        status: "Successful"
+      });
 
-      // Reset the form
+      setTransactionSuccess(true);
       setSelectedPlan(null);
       setDepositConfirmed(false);
-      setReceiptUploaded(false);
-
     } catch (error) {
-      console.error("Error processing transaction:", error);
       alert("There was an error processing your transaction. Please try again.");
     } finally {
       setUploading(false);
@@ -711,7 +720,19 @@ const DepositSection = ({ user, updateBalance }) => {
   return (
     <div style={styles.sectionCard}>
       <h2 style={styles.sectionTitle}>Purchase Gold</h2>
-      {!selectedPlan ? (
+      {transactionSuccess && receiptData ? (
+        <div>
+          <h3>Transaction Successful!</h3>
+          <div style={{ background: "#f9f9f9", padding: 20, borderRadius: 8, margin: "20px 0" }}>
+            <h4>Receipt</h4>
+            <p><strong>Plan:</strong> {receiptData.plan}</p>
+            <p><strong>Amount Deposited:</strong> ${receiptData.amount}</p>
+            <p><strong>Date:</strong> {receiptData.date}</p>
+            <p><strong>Time:</strong> {receiptData.time}</p>
+            <p><strong>Status:</strong> <span style={{ color: "#27ae60" }}>{receiptData.status}</span></p>
+          </div>
+        </div>
+      ) : !selectedPlan ? (
         <>
           <p>Select a gold plan to purchase:</p>
           <div style={styles.goldPlansContainer}>
@@ -727,7 +748,9 @@ const DepositSection = ({ user, updateBalance }) => {
                 <FaCoins size={36} color="#D4AF37" />
                 <h3 style={styles.planTitle}>{plan.name}</h3>
                 <p style={styles.planPrice}>${plan.price} USD</p>
-                <p style={styles.planDescription}>{plan.goldAmount} of Pure Gold</p>
+                <p style={styles.planDescription}><strong>Profit:</strong> {plan.percentProfit} of Pure Gold</p>
+                <p style={styles.planDescription}><strong>Interest:</strong> {plan.intrest}</p>
+                <p style={styles.planDescription}><strong>Duration:</strong> {plan.duration}</p>
                 <p style={styles.planDescription}>{plan.description}</p>
               </div>
             ))}
@@ -740,16 +763,10 @@ const DepositSection = ({ user, updateBalance }) => {
           <div style={styles.depositAddress}>
             <p><strong>USDT Address (TRC20):</strong></p>
             <p>{DEPOSIT_ADDRESS}</p>
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${DEPOSIT_ADDRESS}`}
-              alt="QR Code"
-              style={styles.qrCode}
-            />
             <p><small>Network: TRON (TRC20)</small></p>
           </div>
-          <p>After completing your transfer, click the button below to confirm and upload your receipt.</p>
+          <p>After completing your transfer, click the button below to confirm and generate your receipt.</p>
           <button
-            style={styles.btnPrimary}
             onClick={handleConfirmDeposit}
             disabled={uploading}
           >
@@ -764,34 +781,15 @@ const DepositSection = ({ user, updateBalance }) => {
         </>
       ) : (
         <>
-          <h3>Upload Receipt for {selectedPlan.name}</h3>
-          <p>Please upload a screenshot of your transaction confirmation as proof of payment.</p>
-          <label htmlFor="receipt-upload" style={styles.uploadArea}>
-            <FaUpload size={24} style={{ marginBottom: "10px" }} />
-            <p>Click to upload receipt screenshot</p>
-            <input
-              id="receipt-upload"
-              type="file"
-              accept="image/*"
-              style={styles.uploadInput}
-              onChange={handleImageUpload}
-            />
-          </label>
-          {receiptUploaded && (
-            <div>
-              <p style={styles.successMessage}>
-                <FaCheckCircle style={{ marginRight: "5px" }} />
-                Receipt uploaded successfully!
-              </p>
-              <button
-                style={styles.btnPrimary}
-                onClick={handleSubmitReceipt}
-                disabled={uploading}
-              >
-                {uploading ? "Processing..." : "Complete Transaction"}
-              </button>
-            </div>
-          )}
+          <h3>Confirm Deposit</h3>
+          <p>Click the button below to complete your transaction and generate your receipt.</p>
+          <button
+            style={styles.btnPrimary}
+            onClick={handleSubmitReceipt}
+            disabled={uploading}
+          >
+            {uploading ? "Processing..." : "Complete Transaction"}
+          </button>
         </>
       )}
     </div>
@@ -836,7 +834,7 @@ const WithdrawSection = ({ user, balance, goldBalance, updateBalance }) => {
         userId: user.uid,
         type: "withdrawal",
         amount: withdrawType === "usd" ? amount : amount * 300, // Assuming 1g gold = $300
-        goldAmount: withdrawType === "gold" ? `${amount}g` : "0g",
+        percentProfit: withdrawType === "gold" ? `${amount}g` : "0g",
         status: "pending",
         destinationAddress: destinationAddress,
         timestamp: new Date()
@@ -1029,7 +1027,7 @@ const HistorySection = ({ user }) => {
                   {transaction.plan && ` (${transaction.plan})`}
                 </td>
                 <td style={{ padding: "12px" }}>${transaction.amount}</td>
-                <td style={{ padding: "12px" }}>{transaction.goldAmount || "N/A"}</td>
+                <td style={{ padding: "12px" }}>{transaction.percentProfit || "N/A"}</td>
                 <td style={{ padding: "12px" }}>
                   {transaction.timestamp?.toDate().toLocaleDateString()}
                 </td>
