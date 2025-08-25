@@ -5,339 +5,613 @@ import { auth, db } from "../../firebase";
 import { useNavigate } from "react-router-dom";
 
 const Profile = () => {
-  const navigate = useNavigate();
+  const navigate = useNavigate();
 
-  // Profile state
-  const [form, setForm] = useState({
-    fullName: "",
-    username: "",
-    location: "",
-    dob: "",
-    phone: "",
-    gender: "",
-    occupation: "",
-    bio: "",
-    btcWallet: "",
-    ethWallet: "",
-    usdtWallet: "",
-  });
+  // Profile state
+  const [form, setForm] = useState({
+    fullName: "",
+    username: "",
+    location: "",
+    dob: "",
+    phone: "",
+    gender: "",
+    occupation: "",
+    bio: "",
+    btcWallet: "",
+    ethWallet: "",
+    usdtWallet: "",
+  });
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [user, setUser] = useState(null);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // Handle input change
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
+  // Handle input change
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) {
-        navigate("/login");
-        return;
-      }
-      setUser(u);
+  useEffect(() => {
+    // Set mounted state for animations
+    setIsMounted(true);
+    
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) {
+        navigate("/login");
+        return;
+      }
+      setUser(u);
 
-      try {
-        const ref = doc(db, "users", u.uid);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          const data = snap.data();
-          // Extract separate wallet addresses from the 'wallets' array
-          const btcWallet = data.wallets ? data.wallets.find(w => w.type === 'btc')?.address || "" : "";
-          const ethWallet = data.wallets ? data.wallets.find(w => w.type === 'eth')?.address || "" : "";
-          const usdtWallet = data.wallets ? data.wallets.find(w => w.type === 'usdt')?.address || "" : "";
+      try {
+        const ref = doc(db, "users", u.uid);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const data = snap.data();
+          // Extract separate wallet addresses from the 'wallets' array
+          const btcWallet = data.wallets ? data.wallets.find(w => w.type === 'btc')?.address || "" : "";
+          const ethWallet = data.wallets ? data.wallets.find(w => w.type === 'eth')?.address || "" : "";
+          const usdtWallet = data.wallets ? data.wallets.find(w => w.type === 'usdt')?.address || "" : "";
 
-          setForm((prev) => ({ 
-            ...prev, 
-            ...data, 
-            btcWallet,
-            ethWallet,
-            usdtWallet
-          }));
-        }
-      } catch (e) {
-        console.error("Failed to load profile:", e);
-        setError("Failed to load profile. Please try again.");
-      } finally {
-        setLoading(false);
-      }
-    });
+          setForm((prev) => ({ 
+            ...prev, 
+            ...data, 
+            btcWallet,
+            ethWallet,
+            usdtWallet
+          }));
+        }
+      } catch (e) {
+        console.error("Failed to load profile:", e);
+        setError("Failed to load profile. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    });
 
-    return () => unsub();
-  }, [navigate]);
+    return () => unsub();
+  }, [navigate]);
 
-  const isValid = () =>
-    form.fullName.trim().length > 1 &&
-    form.username.trim().length > 1 &&
-    form.phone.trim().length >= 10 &&
-    form.dob;
+  const isValid = () =>
+    form.fullName.trim().length > 1 &&
+    form.username.trim().length > 1 &&
+    form.phone.trim().length >= 10 &&
+    form.dob;
 
-  const handleSave = async (e) => {
-    e.preventDefault();
-    if (!user) return;
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!user) return;
 
-    if (!isValid()) {
-      setError("Please fill in all required fields.");
-      return;
-    }
+    if (!isValid()) {
+      setError("Please fill in all required fields.");
+      return;
+    }
 
-    setSaving(true);
-    setError("");
-    setSuccess("");
+    setSaving(true);
+    setError("");
+    setSuccess("");
 
-    try {
-      const ref = doc(db, "users", user.uid);
+    try {
+      const ref = doc(db, "users", user.uid);
 
-      // Create the wallets array from the form state
-      const wallets = [];
-      if (form.btcWallet) wallets.push({ type: 'btc', address: form.btcWallet });
-      if (form.ethWallet) wallets.push({ type: 'eth', address: form.ethWallet });
-      if (form.usdtWallet) wallets.push({ type: 'usdt', address: form.usdtWallet });
+      // Create the wallets array from the form state
+      const wallets = [];
+      if (form.btcWallet) wallets.push({ type: 'btc', address: form.btcWallet });
+      if (form.ethWallet) wallets.push({ type: 'eth', address: form.ethWallet });
+      if (form.usdtWallet) wallets.push({ type: 'usdt', address: form.usdtWallet });
 
-      const dataToSave = {
-        ...form,
-        email: user.email,
-        wallets, // This is the fix!
-        updatedAt: serverTimestamp(),
-      };
+      const dataToSave = {
+        ...form,
+        email: user.email,
+        wallets,
+        updatedAt: serverTimestamp(),
+      };
 
-      // Remove individual wallet fields from the data to save
-      delete dataToSave.btcWallet;
-      delete dataToSave.ethWallet;
-      delete dataToSave.usdtWallet;
-          
-      const existingData = (await getDoc(ref)).data();
-      if (!existingData?.createdAt) {
-        dataToSave.createdAt = serverTimestamp();
-      }
+      // Remove individual wallet fields from the data to save
+      delete dataToSave.btcWallet;
+      delete dataToSave.ethWallet;
+      delete dataToSave.usdtWallet;
+          
+      const existingData = (await getDoc(ref)).data();
+      if (!existingData?.createdAt) {
+        dataToSave.createdAt = serverTimestamp();
+      }
 
-      await setDoc(ref, dataToSave, { merge: true });
-      setSuccess("Profile updated successfully!");
-      setTimeout(() => navigate("/dashboard"), 1200);
-    } catch (e) {
-      console.error("Save failed:", e);
-      setError("Could not save profile. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
+      await setDoc(ref, dataToSave, { merge: true });
+      setSuccess("Profile updated successfully!");
+      setTimeout(() => navigate("/dashboard"), 1200);
+    } catch (e) {
+      console.error("Save failed:", e);
+      setError("Could not save profile. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  if (loading)
-    return (
-      <div style={styles.loaderContainer}>
-        <div style={styles.spinner}></div>
-        <p>Loading Profile...</p>
-      </div>
-    );
+  if (loading)
+    return (
+      <div className="loader-container">
+        <div className="spinner"></div>
+        <p>Loading Profile...</p>
+      </div>
+    );
 
-  return (
-    <div style={styles.body}>
-      <div style={styles.page}>
-        <h1 style={styles.h1}>Complete Your Profile</h1>
+  return (
+    <div className="profile-page">
+      <div className={`profile-container ${isMounted ? 'mounted' : ''}`}>
+        <h1 className="profile-title">Complete Your Profile</h1>
 
-        <form onSubmit={handleSave} style={styles.form}>
-          {["fullName", "username"].map((field) => (
-            <input
-              key={field}
-              name={field}
-              style={styles.input}
-              type="text"
-              placeholder={field === "fullName" ? "Full Name" : "Username"}
-              value={form[field]}
-              onChange={handleChange}
-              required
-            />
-          ))}
+        <form onSubmit={handleSave} className="profile-form">
+          <div className="form-grid">
+            {["fullName", "username"].map((field, i) => (
+              <div key={field} className={`form-group animated-item`} style={{ animationDelay: `${i * 0.1}s` }}>
+                <input
+                  name={field}
+                  type="text"
+                  placeholder={field === "fullName" ? "Full Name *" : "Username *"}
+                  value={form[field]}
+                  onChange={handleChange}
+                  required
+                  className="form-input"
+                />
+              </div>
+            ))}
 
-          <input
-            name="location"
-            style={styles.input}
-            type="text"
-            placeholder="Location"
-            value={form.location}
-            onChange={handleChange}
-          />
-          <input
-            name="dob"
-            style={styles.input}
-            type="date"
-            value={form.dob}
-            onChange={handleChange}
-          />
-          <input
-            name="phone"
-            style={styles.input}
-            type="text"
-            placeholder="Phone Number"
-            value={form.phone}
-            onChange={handleChange}
-            required
-          />
-          <select
-            name="gender"
-            style={styles.select}
-            value={form.gender}
-            onChange={handleChange}
-          >
-            <option value="">Select Gender</option>
-            <option>Male</option>
-            <option>Female</option>
-            <option>Other</option>
-          </select>
-          <input
-            name="occupation"
-            style={styles.input}
-            type="text"
-            placeholder="Occupation"
-            value={form.occupation}
-            onChange={handleChange}
-          />
-          <textarea
-            name="bio"
-            style={styles.textarea}
-            placeholder="Bio (Tell us about yourself)"
-            value={form.bio}
-            onChange={handleChange}
-            rows={3}
-          ></textarea>
+            <div className="form-group animated-item" style={{ animationDelay: '0.2s' }}>
+              <input
+                name="location"
+                type="text"
+                placeholder="Location"
+                value={form.location}
+                onChange={handleChange}
+                className="form-input"
+              />
+            </div>
+            
+            <div className="form-group animated-item" style={{ animationDelay: '0.3s' }}>
+              <label className="input-label">Date of Birth *</label>
+              <input
+                name="dob"
+                type="date"
+                value={form.dob}
+                onChange={handleChange}
+                className="form-input"
+                required
+              />
+            </div>
+            
+            <div className="form-group animated-item" style={{ animationDelay: '0.4s' }}>
+              <input
+                name="phone"
+                type="tel"
+                placeholder="Phone Number *"
+                value={form.phone}
+                onChange={handleChange}
+                required
+                className="form-input"
+              />
+            </div>
+            
+            <div className="form-group animated-item" style={{ animationDelay: '0.5s' }}>
+              <select
+                name="gender"
+                value={form.gender}
+                onChange={handleChange}
+                className="form-select"
+              >
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            
+            <div className="form-group animated-item" style={{ animationDelay: '0.6s' }}>
+              <input
+                name="occupation"
+                type="text"
+                placeholder="Occupation"
+                value={form.occupation}
+                onChange={handleChange}
+                className="form-input"
+              />
+            </div>
+            
+            <div className="form-group full-width animated-item" style={{ animationDelay: '0.7s' }}>
+              <textarea
+                name="bio"
+                placeholder="Bio (Tell us about yourself)"
+                value={form.bio}
+                onChange={handleChange}
+                rows={3}
+                className="form-textarea"
+              ></textarea>
+            </div>
 
-          {["btcWallet", "ethWallet", "usdtWallet"].map((wallet) => (
-            <input
-              key={wallet}
-              name={wallet}
-              style={styles.input}
-              type="text"
-              placeholder={
-                wallet === "btcWallet"
-                  ? "BTC Wallet Address"
-                  : wallet === "ethWallet"
-                  ? "ETH Wallet Address"
-                  : "USDT Wallet Address"
-              }
-              value={form[wallet]}
-              onChange={handleChange}
-            />
-          ))}
+            <div className="wallet-section full-width animated-item" style={{ animationDelay: '0.8s' }}>
+              <h3 className="wallet-title">Wallet Addresses</h3>
+              {["btcWallet", "ethWallet", "usdtWallet"].map((wallet, i) => (
+                <div key={wallet} className="form-group">
+                  <input
+                    name={wallet}
+                    type="text"
+                    placeholder={
+                      wallet === "btcWallet"
+                        ? "BTC Wallet Address"
+                        : wallet === "ethWallet"
+                        ? "ETH Wallet Address"
+                        : "USDT Wallet Address"
+                    }
+                    value={form[wallet]}
+                    onChange={handleChange}
+                    className="form-input"
+                  />
+                </div>
+              ))}
+            </div>
 
-          {error && <span style={styles.errorText}>{error}</span>}
-          {success && <span style={styles.successText}>{success}</span>}
+            {error && <div className="error-message full-width animated-item">{error}</div>}
+            {success && <div className="success-message full-width animated-item">{success}</div>}
 
-          <button
-            type="submit"
-            style={{
-              ...styles.btn,
-              opacity: saving || !isValid() ? 0.6 : 1,
-              cursor: saving || !isValid() ? "not-allowed" : "pointer",
-            }}
-            disabled={saving || !isValid()}
-          >
-            {saving ? "Saving…" : "Save Profile"}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-};
+            <div className="form-actions full-width animated-item" style={{ animationDelay: '0.9s' }}>
+              <button
+                type="button"
+                onClick={() => navigate("/dashboard")}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={saving || !isValid()}
+              >
+                {saving ? (
+                  <>
+                    <span className="btn-spinner"></span>
+                    Saving...
+                  </>
+                ) : "Save Profile"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
 
-const styles = {
-  body: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "linear-gradient(135deg, #f9fafc 0%, #eaeaea 100%)",
-    fontFamily: "'Poppins', sans-serif",
-    padding: "20px",
-  },
-  page: {
-    background: "rgba(255, 255, 255, 0.85)",
-    backdropFilter: "blur(20px)",
-    WebkitBackdropFilter: "blur(20px)",
-    borderRadius: "20px",
-    padding: "2rem",
-    width: "100%",
-    maxWidth: "700px",
-    boxShadow: "0 8px 32px rgba(0, 0, 0, 0.15)",
-    border: "1px solid rgba(255, 215, 0, 0.4)",
-  },
-  h1: {
-    textAlign: "center",
-    marginBottom: "1.5rem",
-    fontWeight: "700",
-    fontSize: "2rem",
-    color: "#1c1c1c",
-  },
-  form: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-    gap: "1rem",
-  },
-  input: {
-    padding: "0.85rem 1rem",
-    borderRadius: "12px",
-    border: "1px solid rgba(0,0,0,0.1)",
-    background: "#fff",
-    fontSize: "1rem",
-    outline: "none",
-  },
-  textarea: {
-    gridColumn: "span 2",
-    padding: "1rem",
-    borderRadius: "12px",
-    border: "1px solid rgba(0,0,0,0.1)",
-    background: "#fff",
-    minHeight: "80px",
-    resize: "vertical",
-  },
-  select: {
-    padding: "0.85rem 1rem",
-    borderRadius: "12px",
-    border: "1px solid rgba(0,0,0,0.1)",
-    background: "#fff",
-  },
-  btn: {
-    gridColumn: "span 2",
-    padding: "1rem",
-    borderRadius: "14px",
-    border: "none",
-    background: "linear-gradient(90deg, #FFD700 0%, #FFC107 100%)",
-    fontWeight: "700",
-    fontSize: "1.2rem",
-    color: "#181818",
-    boxShadow: "0 6px 20px rgba(255, 215, 0, 0.3)",
-    transition: "all 0.3s ease",
-  },
-  errorText: {
-    gridColumn: "span 2",
-    color: "#ff4d4d",
-    textAlign: "center",
-  },
-  successText: {
-    gridColumn: "span 2",
-    color: "#28a745",
-    textAlign: "center",
-  },
-  loaderContainer: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: "100vh",
-    fontFamily: "'Poppins', sans-serif",
-  },
-  spinner: {
-    width: "40px",
-    height: "40px",
-    border: "4px solid #ddd",
-    borderTop: "4px solid #FFD700",
-    borderRadius: "50%",
-    animation: "spin 1s linear infinite",
-  },
+      <style jsx>{`
+        /* Profile Page Styles */
+        .profile-page {
+          min-height: 100vh;
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+          font-family: 'Inter', 'Segoe UI', 'Roboto', sans-serif;
+          padding: 16px;
+          padding-top: 60px;
+        }
+
+        .profile-container {
+          background: white;
+          border-radius: 20px;
+          padding: 24px;
+          width: 100%;
+          max-width: 600px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.5);
+          opacity: 0;
+          transform: translateY(20px);
+          transition: all 0.5s ease;
+        }
+
+        .profile-container.mounted {
+          opacity: 1;
+          transform: translateY(0);
+        }
+
+        .profile-title {
+          text-align: center;
+          margin-bottom: 24px;
+          font-weight: 700;
+          font-size: 24px;
+          color: #2c3e50;
+          position: relative;
+          padding-bottom: 12px;
+        }
+
+        .profile-title::after {
+          content: '';
+          position: absolute;
+          bottom: 0;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 50px;
+          height: 4px;
+          background: linear-gradient(90deg, #FFD700, #DAA520);
+          border-radius: 2px;
+        }
+
+        .profile-form {
+          width: 100%;
+        }
+
+        .form-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .form-group {
+          display: flex;
+          flex-direction: column;
+          opacity: 0;
+          transform: translateY(10px);
+          animation: fadeInUp 0.5s ease forwards;
+        }
+
+        .animated-item {
+          opacity: 0;
+          transform: translateY(10px);
+          animation: fadeInUp 0.5s ease forwards;
+        }
+
+        @keyframes fadeInUp {
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .full-width {
+          width: 100%;
+        }
+
+        .input-label {
+          font-weight: 600;
+          color: #2c3e50;
+          margin-bottom: 6px;
+          font-size: 14px;
+        }
+
+        .form-input, .form-select, .form-textarea {
+          padding: 12px 16px;
+          border-radius: 12px;
+          border: 1px solid #e1e5e9;
+          background: #f8f9fa;
+          font-size: 16px;
+          transition: all 0.3s ease;
+          font-family: inherit;
+          width: 100%;
+          box-sizing: border-box;
+        }
+
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+          outline: none;
+          border-color: #3498db;
+          background: white;
+          box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+          transform: translateY(-2px);
+        }
+
+        .form-textarea {
+          resize: vertical;
+          min-height: 100px;
+        }
+
+        .wallet-section {
+          margin-top: 16px;
+          padding-top: 16px;
+          border-top: 1px solid #e1e5e9;
+        }
+
+        .wallet-title {
+          font-size: 18px;
+          font-weight: 600;
+          color: #2c3e50;
+          margin-bottom: 12px;
+        }
+
+        .form-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+          margin-top: 16px;
+          padding-top: 16px;
+          border-top: 1px solid #e1e5e9;
+        }
+
+        .btn-primary {
+          padding: 12px 24px;
+          background: linear-gradient(90deg, #FFD700 0%, #DAA520 100%);
+          color: #2c3e50;
+          border: none;
+          border-radius: 12px;
+          font-weight: 600;
+          font-size: 16px;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 120px;
+          justify-content: center;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(255, 215, 0, 0.4);
+        }
+
+        .btn-primary:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .btn-spinner {
+          width: 16px;
+          height: 16px;
+          border: 2px solid transparent;
+          border-top: 2px solid #2c3e50;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+
+        .btn-secondary {
+          padding: 12px 24px;
+          background: white;
+          color: #2c3e50;
+          border: 1px solid #bdc3c7;
+          border-radius: 12px;
+          font-weight: 600;
+          font-size: 16px;
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+          background: #f8f9fa;
+          transform: translateY(-2px);
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .error-message {
+          padding: 12px 16px;
+          background: #f8d7da;
+          color: #721c24;
+          border-radius: 8px;
+          border: 1px solid #f5c6cb;
+          text-align: center;
+          margin: 8px 0;
+          animation: shake 0.5s ease;
+        }
+
+        .success-message {
+          padding: 12px 16px;
+          background: #d4edda;
+          color: #155724;
+          border-radius: 8px;
+          border: 1px solid #c3e6cb;
+          text-align: center;
+          margin: 8px 0;
+          animation: pulse 0.5s ease;
+        }
+
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-5px); }
+          75% { transform: translateX(5px); }
+        }
+
+        @keyframes pulse {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.02); }
+          100% { transform: scale(1); }
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        .loader-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          font-family: 'Inter', sans-serif;
+        }
+
+        .spinner {
+          width: 40px;
+          height: 40px;
+          border: 4px solid #f3f3f3;
+          border-top: 4px solid #FFD700;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+          margin-bottom: 16px;
+        }
+
+        /* Responsive Styles */
+        @media (max-width: 640px) {
+          .profile-page {
+            padding: 12px;
+            padding-top: 40px;
+            align-items: flex-start;
+          }
+
+          .profile-container {
+            padding: 20px;
+            border-radius: 16px;
+          }
+
+          .profile-title {
+            font-size: 22px;
+            margin-bottom: 20px;
+          }
+
+          .form-grid {
+            gap: 12px;
+          }
+
+          .form-input, .form-select, .form-textarea {
+            padding: 10px 14px;
+            font-size: 16px; /* Prevents zoom on iOS */
+          }
+
+          .form-actions {
+            flex-direction: column-reverse;
+            gap: 10px;
+          }
+
+          .btn-primary, .btn-secondary {
+            width: 100%;
+            text-align: center;
+            padding: 14px;
+          }
+
+          .wallet-section {
+            margin-top: 12px;
+            padding-top: 12px;
+          }
+        }
+
+        @media (max-width: 400px) {
+          .profile-container {
+            padding: 16px;
+          }
+
+          .profile-title {
+            font-size: 20px;
+          }
+
+          .form-input, .form-select, .form-textarea {
+            padding: 12px; /* Larger touch targets */
+          }
+        }
+
+        /* Prevent zoom on iOS input focus */
+        @media screen and (max-width: 767px) {
+          input, select, textarea {
+            font-size: 16px !important;
+          }
+        }
+
+        /* Height adjustments for very small screens */
+        @media (max-height: 600px) {
+          .profile-page {
+            padding-top: 20px;
+            padding-bottom: 20px;
+          }
+        }
+      `}</style>
+    </div>
+  );
 };
 
 export default Profile;

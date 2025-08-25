@@ -44,7 +44,9 @@ function Header() {
           <a className='a' href="#about">About us</a>
           <a className='a' href="#contact">Contact us</a>
           <a className='a' href="#services">Our services</a>
+          <Link to="/stock">
           <a className='a' href="#stock">Stock prices</a>
+          </Link>
           <a className='a' href="#team">Our team</a>
            
           <a href="#testimonial">Testimonial</a>
