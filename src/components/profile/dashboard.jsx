@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+  import React, { useEffect, useState } from "react";
 import { onAuthStateChanged, signOut, sendPasswordResetEmail } from "firebase/auth";
-import { doc, getDoc, updateDoc, collection, addDoc, onSnapshot, query, where, orderBy } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, addDoc, onSnapshot, query, where, orderBy, serverTimestamp, Timestamp } from "firebase/firestore";
 import { auth, db } from "../../firebase";
 import { useNavigate } from "react-router-dom";
 import {
@@ -22,54 +22,71 @@ import {
   FaUpload,
   FaReceipt,
   FaBars,
-  FaTimes
+  FaTimes,
+  FaCopy,
+  FaCalendarAlt
 } from "react-icons/fa";
 
 // Constants for reusable data
+const GOLD_PRICE_PER_GRAM = 300; // Consistent gold price assumption in USD
+
 const GOLD_PLANS = [
   {
     id: 1,
     name: "BEGINNERS PLAN",
-    percentProfit: "5%",
-    price: 19900,
-    duration:"7 days",
-    intrest:"$200",
+    profitPercent: 5,
+    min: 200,
+    max: 19900,
+    duration: 7, // days
     description: "Perfect for beginners starting with gold investment"
   },
   {
     id: 2,
     name: "MASTERS PLAN",
-    percentProfit: "30%",
-    duration: "14 days",
-    price: 999999,
-    intrest:"$20,000",
+    profitPercent: 30,
+    min: 20000,
+    max: 99999,
+    duration: 14, // days
     description: "Ideal for consistent wealth accumulation"
   },
   {
     id: 3,
     name: "PREMIUM PLAN",
-    percentProfit: "50%",
-    price: 1000000,
-    intrest:"Unlimited for 30 days",
-    description: "For serious investors building a substantial portfolio"
+    profitPercent: 50,
+    min: 100000,
+    max: Infinity,
+    duration: 30, // days
+    description: "For premium investors building a substantial portfolio"
   }
 ];
 
-const DEPOSIT_ADDRESS = "T9zZ4oxBJNiNxaVF2sdjLrjE4KeZkqzkiv";
+const CRYPTO_WALLETS = [
+  { type: "USDT (TRC20)", address: "T9zZ4oxBJNiNxaVF2sdjLrjE4KeZkqzkiv" },
+  { type: "TRON", address: "TNyKcnXh9GhANHaCgQyRdnXGmMc72ykQFC" },
+  { type: "DODGECOIN", address: "D7whXjWwZzsXqnfZdy3rSkBtvTbyefr4d4" }
+];
 
 // Component for the Profile section
 const ProfileSection = ({ user }) => {
   const navigate = useNavigate();
   const [profileData, setProfileData] = useState({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchProfileData = async () => {
       if (user) {
-        const docRef = doc(db, "users", user.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setProfileData(docSnap.data());
+        try {
+          const docRef = doc(db, "users", user.uid);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            setProfileData(docSnap.data());
+          } else {
+            setError("Profile data not found.");
+          }
+        } catch (err) {
+          setError("Failed to fetch profile data.");
+          console.error(err);
         }
       }
       setLoading(false);
@@ -81,59 +98,43 @@ const ProfileSection = ({ user }) => {
     return <div className="loading">Loading profile...</div>;
   }
 
+  if (error) {
+    return <div className="error-message">{error}</div>;
+  }
+
   return (
     <div className="profile-container">
       <h2 className="section-title">User Profile</h2>
       <div className="profile-grid">
         <div className="profile-card">
-          <strong>Full Name:</strong>{" "}
-          <span>{profileData.fullName || "N/A"}</span>
+          <strong>Full Name:</strong> <span>{profileData.fullName || "N/A"}</span>
         </div>
         <div className="profile-card">
           <strong>Email:</strong> <span>{user.email}</span>
         </div>
         <div className="profile-card">
-          <strong>Username:</strong>{" "}
-          <span>{profileData.username || "N/A"}</span>
+          <strong>Username:</strong> <span>{profileData.username || "N/A"}</span>
         </div>
         <div className="profile-card">
           <strong>Phone:</strong> <span>{profileData.phone || "N/A"}</span>
         </div>
         <div className="profile-card">
-          <strong>Location:</strong>{" "}
-          <span>{profileData.location || "N/A"}</span>
+          <strong>Location:</strong> <span>{profileData.location || "N/A"}</span>
         </div>
         <div className="profile-card">
-          <strong>Occupation:</strong>{" "}
-          <span>{profileData.occupation || "N/A"}</span>
+          <strong>Occupation:</strong> <span>{profileData.occupation || "N/A"}</span>
         </div>
       </div>
       <div className="bio-card">
         <strong>Bio:</strong>
         <p>{profileData.bio || "No bio provided."}</p>
       </div>
-      <div className="wallet-info">
-        <h3>Wallet Addresses</h3>
-        {profileData.wallets && profileData.wallets.length > 0 ? (
-          <ul className="wallet-list">
-            {profileData.wallets.map((wallet, index) => (
-              <li key={index}>
-                <strong>{wallet.type.toUpperCase()}:</strong> {wallet.address}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>
-            No wallet addresses saved.{" "}
-            <span
-              className="link"
-              onClick={() => navigate("/profile")}
-            >
-              Add them now.
-            </span>
-          </p>
-        )}
-      </div>
+      <button
+        className="btn-primary"
+        onClick={() => navigate("/edit-profile")}
+      >
+        Edit Profile
+      </button>
     </div>
   );
 };
@@ -179,27 +180,25 @@ const SettingsSection = ({ user }) => {
           </button>
           {resetStatus === "success" && (
             <span className="success-message">
-              <FaCheckCircle style={{ marginRight: "5px" }} /> Password reset
-              email sent! Check your inbox.
+              <FaCheckCircle style={{ marginRight: "5px" }} /> Password reset email sent! Check your inbox.
             </span>
           )}
           {resetStatus === "error" && (
             <span className="error-message">
-              <FaExclamationCircle style={{ marginRight: "5px" }} /> Failed to
-              send reset email. Please try again.
+              <FaExclamationCircle style={{ marginRight: "5px" }} /> Failed to send reset email. Please try again.
             </span>
           )}
         </div>
       </div>
       <div className="settings-card">
-        <h2 className="section-title">Other Settings</h2>
+        <h2 className="section-title">Notification Preferences</h2>
         <div className="setting-item">
-          <p>Customize your account preferences here.</p>
+          <p>Manage how you receive updates and alerts.</p>
           <button
             className="btn-secondary"
-            onClick={() => alert("This feature is coming soon!")}
+            onClick={() => alert("Notification settings update coming soon!")}
           >
-            Update Notifications
+            Configure Notifications
           </button>
         </div>
       </div>
@@ -210,40 +209,80 @@ const SettingsSection = ({ user }) => {
 // Component for the Deposit section
 const DepositSection = ({ user, updateBalance }) => {
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [depositAmount, setDepositAmount] = useState("");
+  const [selectedWallet, setSelectedWallet] = useState(null);
   const [depositConfirmed, setDepositConfirmed] = useState(false);
+  const [uploaded, setUploaded] = useState(false);
   const [transactionSuccess, setTransactionSuccess] = useState(false);
-  const [receiptData, setReceiptData] = useState(null);
-  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState(null);
+  const [step, setStep] = useState(0); // 0: select plan, 1: enter amount, 2: select wallet, 3: confirm transfer, 4: upload and complete
+  const [addressCopied, setAddressCopied] = useState(false);
 
   const handlePlanSelect = (plan) => {
     setSelectedPlan(plan);
+    setDepositAmount("");
+    setSelectedWallet(null);
     setDepositConfirmed(false);
+    setUploaded(false);
     setTransactionSuccess(false);
-    setReceiptData(null);
+    setError(null);
+    setStep(1);
   };
 
-  const handleConfirmDeposit = () => {
+  const handleAmountSubmit = () => {
+    const amount = parseFloat(depositAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setError("Please enter a valid amount greater than 0");
+      return;
+    }
+    if (amount < selectedPlan.min || (selectedPlan.max !== Infinity && amount > selectedPlan.max)) {
+      setError(`Please enter a valid amount between $${selectedPlan.min} and $${selectedPlan.max === Infinity ? 'unlimited' : selectedPlan.max}`);
+      return;
+    }
+    setError(null);
+    setStep(2);
+  };
+
+  const handleWalletSelect = (wallet) => {
+    setSelectedWallet(wallet);
+    setStep(3);
+  };
+
+  const handleConfirmTransfer = () => {
     setDepositConfirmed(true);
+    setStep(4);
   };
 
-  const handleSubmitReceipt = async () => {
-    if (!selectedPlan) return;
-    setUploading(true);
+  const processTransaction = async () => {
+    if (!selectedPlan || !depositAmount) return;
+    setError(null);
 
     try {
-      // Prepare transaction data
-      const now = new Date();
+      const amount = parseFloat(depositAmount);
+      const profitPercent = selectedPlan.profitPercent;
+      const interest = (amount * profitPercent / 100).toFixed(0);
+      
+      // Calculate next interest payment date
+      const startDate = new Date();
+      const nextPaymentDate = new Date();
+      nextPaymentDate.setDate(startDate.getDate() + selectedPlan.duration);
+      
       const transactionData = {
         userId: user.uid,
         type: "deposit",
-        amount: selectedPlan.price,
-        percentProfit: selectedPlan.percentProfit,
+        amount: amount,
+        profitPercent: `${profitPercent}%`,
         plan: selectedPlan.name,
-        intrest: selectedPlan.intrest,
+        planId: selectedPlan.id,
+        interest: `$${interest}`,
         duration: selectedPlan.duration,
         description: selectedPlan.description,
         status: "completed",
-        timestamp: now
+        timestamp: serverTimestamp(),
+        startDate: Timestamp.fromDate(startDate),
+        nextPaymentDate: Timestamp.fromDate(nextPaymentDate),
+        interestEarned: 0,
+        totalInterestEarned: 0
       };
 
       // Store transaction in Firestore
@@ -256,51 +295,64 @@ const DepositSection = ({ user, updateBalance }) => {
       if (userDoc.exists()) {
         const currentBalance = userDoc.data().balance || 0;
         const currentGold = userDoc.data().goldBalance || 0;
-        const goldToAdd = parseFloat(selectedPlan.percentProfit);
+        const goldToAdd = parseFloat(interest) / GOLD_PRICE_PER_GRAM;
 
         await updateDoc(userRef, {
-          balance: currentBalance + selectedPlan.price,
+          balance: currentBalance + amount,
           goldBalance: currentGold + goldToAdd
         });
 
-        updateBalance(currentBalance + selectedPlan.price, currentGold + goldToAdd);
+        updateBalance(currentBalance + amount, currentGold + goldToAdd);
       }
 
-      // Generate receipt data
-      setReceiptData({
-        plan: selectedPlan.name,
-        amount: selectedPlan.price,
-        date: now.toLocaleDateString(),
-        time: now.toLocaleTimeString(),
-        status: "Successful"
-      });
-
       setTransactionSuccess(true);
+      setStep(0);
       setSelectedPlan(null);
       setDepositConfirmed(false);
-    } catch (error) {
-      alert("There was an error processing your transaction. Please try again.");
-    } finally {
-      setUploading(false);
+      setUploaded(false);
+    } catch (err) {
+      setError("Failed to process transaction. Please try again.");
+      console.error(err);
+    }
+  };
+
+  const handleFileChange = async (e) => {
+    if (e.target.files[0]) {
+      setUploaded(true);
+      await processTransaction();
+    }
+  };
+
+  const handleCopyAddress = () => {
+    if (selectedWallet?.address) {
+      navigator.clipboard.writeText(selectedWallet.address);
+      setAddressCopied(true);
+      setTimeout(() => setAddressCopied(false), 2000);
     }
   };
 
   return (
     <div className="section-card">
       <h2 className="section-title">Purchase Gold</h2>
-      {transactionSuccess && receiptData ? (
+      {error && (
+        <span className="error-message">
+          <FaExclamationCircle style={{ marginRight: "5px" }} /> {error}
+        </span>
+      )}
+      {transactionSuccess ? (
         <div>
           <h3>Transaction Successful!</h3>
-          <div className="receipt-container">
-            <h4>Receipt</h4>
-            <p><strong>Plan:</strong> {receiptData.plan}</p>
-            <p><strong>Amount Deposited:</strong> ${receiptData.amount}</p>
-            <p><strong>Date:</strong> {receiptData.date}</p>
-            <p><strong>Time:</strong> {receiptData.time}</p>
-            <p><strong>Status:</strong> <span className="status-success">{receiptData.status}</span></p>
-          </div>
+          <span className="success-message">
+            <FaCheckCircle style={{ marginRight: "5px" }} /> Your deposit has been processed successfully!
+          </span>
+          <button
+            className="btn-secondary"
+            onClick={() => setTransactionSuccess(false)}
+          >
+            Back to Plans
+          </button>
         </div>
-      ) : !selectedPlan ? (
+      ) : step === 0 ? (
         <>
           <p>Select a gold plan to purchase:</p>
           <div className="gold-plans-container">
@@ -312,52 +364,88 @@ const DepositSection = ({ user, updateBalance }) => {
               >
                 <FaCoins size={36} color="#D4AF37" />
                 <h3 className="plan-title">{plan.name}</h3>
-                <p className="plan-price">${plan.price} USD</p>
-                <p className="plan-description"><strong>Profit:</strong> {plan.percentProfit} of Pure Gold</p>
-                <p className="plan-description"><strong>Interest:</strong> {plan.intrest}</p>
-                <p className="plan-description"><strong>Duration:</strong> {plan.duration}</p>
+                <p className="plan-price">${plan.min}  - {plan.max === Infinity ? 'and above' : plan.max} USD</p>
+                <p className="plan-description"><strong>Profit:</strong> {plan.profitPercent}% every {plan.duration} days</p>
                 <p className="plan-description">{plan.description}</p>
               </div>
             ))}
           </div>
         </>
-      ) : !depositConfirmed ? (
+      ) : step === 1 ? (
         <>
           <h3>Selected Plan: {selectedPlan.name}</h3>
-          <p>Please send exactly <strong>${selectedPlan.price} USDT</strong> to the following address:</p>
-          <div className="deposit-address">
-            <p><strong>USDT Address (TRC20):</strong></p>
-            <p>{DEPOSIT_ADDRESS}</p>
-            <p><small>Network: TRON (TRC20)</small></p>
+          <div className="form-group">
+            <label htmlFor="deposit-amount">Enter Deposit Amount:</label>
+            <input
+              id="deposit-amount"
+              type="number"
+              value={depositAmount}
+              onChange={(e) => setDepositAmount(e.target.value)}
+              placeholder={`Enter amount between $${selectedPlan.min} and $${selectedPlan.max === Infinity ? 'unlimited' : selectedPlan.max}`}
+            />
           </div>
-          <p>After completing your transfer, click the button below to confirm and generate your receipt.</p>
+          <button className="btn-primary" onClick={handleAmountSubmit}>
+            Proceed
+          </button>
+          <button className="btn-secondary" onClick={() => setStep(0)}>
+            Back
+          </button>
+        </>
+      ) : step === 2 ? (
+        <>
+          <h3>Select a Wallet</h3>
+          <div className="gold-plans-container">
+            {CRYPTO_WALLETS.map((wallet, index) => (
+              <div
+                key={index}
+                className={`gold-plan-card ${selectedWallet?.type === wallet.type ? 'selected-plan' : ''}`}
+                onClick={() => handleWalletSelect(wallet)}
+              >
+                <FaCoins size={36} color="#D4AF37" />
+                <h3 className="plan-title">{wallet.type}</h3>
+              </div>
+            ))}
+          </div>
+          <button className="btn-secondary" onClick={() => setStep(1)}>
+            Back
+          </button>
+        </>
+      ) : step === 3 ? (
+        <>
+          <h3>Selected Plan: {selectedPlan.name}</h3>
+          <p>Amount: ${depositAmount}</p>
+           <p>Please send exactly <strong>${depositAmount}</strong> to the following address:</p>
+          <div className="deposit-address">
+            <p><strong>{selectedWallet.type} Address:</strong></p>
+            <p>{selectedWallet.address}</p>
+            <button className="btn-secondary" onClick={handleCopyAddress}>
+              {addressCopied ? "Copied!" : "Copy Address"} <FaCopy style={{ marginLeft: "5px" }} />
+            </button>
+          </div>
+          <p>After completing your transfer, click the button below to confirm.</p>
           <button
             className="btn-primary"
-            onClick={handleConfirmDeposit}
-            disabled={uploading}
+            onClick={handleConfirmTransfer}
           >
             I've Sent the Payment
           </button>
           <button
             className="btn-secondary"
-            onClick={() => setSelectedPlan(null)}
+            onClick={() => setStep(2)}
           >
-            Choose Different Plan
+            Choose Different Wallet
           </button>
         </>
-      ) : (
+      ) : step === 4 ? (
         <>
           <h3>Confirm Deposit</h3>
-          <p>Click the button below to complete your transaction and generate your receipt.</p>
-          <button
-            className="btn-primary"
-            onClick={handleSubmitReceipt}
-            disabled={uploading}
-          >
-            {uploading ? "Processing..." : "Complete Transaction"}
+          <p>Upload a screenshot of the transaction (for verification, not stored):</p>
+          <input type="file" accept="image/*" onChange={handleFileChange} />
+          <button className="btn-secondary" onClick={() => setStep(3)}>
+            Back
           </button>
         </>
-      )}
+      ) : null}
     </div>
   );
 };
@@ -366,19 +454,27 @@ const DepositSection = ({ user, updateBalance }) => {
 const WithdrawSection = ({ user, balance, goldBalance, updateBalance }) => {
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawType, setWithdrawType] = useState("usd");
-  const [destinationAddress, setDestinationAddress] = useState("");
+  const [destinationWallet, setDestinationWallet] = useState("");
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "" });
 
   const handleWithdraw = async () => {
-    if (!withdrawAmount || !destinationAddress) {
-      setMessage({ text: "Please fill all fields", type: "error" });
+    setMessage({ text: "", type: "" });
+
+    if (!withdrawAmount || !destinationWallet) {
+      setMessage({ text: "Please select a wallet and enter an amount", type: "error" });
       return;
     }
 
     const amount = parseFloat(withdrawAmount);
     if (isNaN(amount) || amount <= 0) {
       setMessage({ text: "Please enter a valid amount", type: "error" });
+      return;
+    }
+
+    const minAmount = withdrawType === "usd" ? 50 : 1;
+    if (amount < minAmount) {
+      setMessage({ text: `Minimum withdrawal is $${minAmount} USD or ${minAmount}g Gold`, type: "error" });
       return;
     }
 
@@ -395,20 +491,19 @@ const WithdrawSection = ({ user, balance, goldBalance, updateBalance }) => {
     setProcessing(true);
 
     try {
-      // Create withdrawal transaction record
+      const amountInUSD = withdrawType === "usd" ? amount : amount * GOLD_PRICE_PER_GRAM;
       const transactionData = {
         userId: user.uid,
         type: "withdrawal",
-        amount: withdrawType === "usd" ? amount : amount * 300, // Assuming 1g gold = $300
-        percentProfit: withdrawType === "gold" ? `${amount}g` : "0g",
+        amount: amountInUSD,
+        profitPercent: withdrawType === "gold" ? `${amount}g` : "0g",
         status: "pending",
-        destinationAddress: destinationAddress,
-        timestamp: new Date()
+        walletType: destinationWallet,
+        timestamp: serverTimestamp()
       };
 
       await addDoc(collection(db, "transactions"), transactionData);
 
-      // Update user balance
       const userRef = doc(db, "users", user.uid);
       const userDoc = await getDoc(userRef);
 
@@ -432,13 +527,12 @@ const WithdrawSection = ({ user, balance, goldBalance, updateBalance }) => {
         type: "success" 
       });
       
-      // Reset form
       setWithdrawAmount("");
-      setDestinationAddress("");
+      setDestinationWallet("");
 
     } catch (error) {
       console.error("Error processing withdrawal:", error);
-      setMessage({ text: "There was an error processing your withdrawal. Please try again.", type: "error" });
+      setMessage({ text: "Failed to process withdrawal. Please try again.", type: "error" });
     } finally {
       setProcessing(false);
     }
@@ -449,7 +543,7 @@ const WithdrawSection = ({ user, balance, goldBalance, updateBalance }) => {
       <h2 className="section-title">Withdraw Funds</h2>
       
       <div className="balance-info">
-        <p>Available Balance: <strong>${balance} USD</strong> | <strong>{goldBalance}g Gold</strong></p>
+        <p>Available Balance: <strong>${balance.toLocaleString()} USD</strong> | <strong>{goldBalance.toFixed(2)}g Gold</strong></p>
       </div>
 
       <div className="withdraw-form">
@@ -458,7 +552,11 @@ const WithdrawSection = ({ user, balance, goldBalance, updateBalance }) => {
           <select 
             id="withdraw-type"
             value={withdrawType} 
-            onChange={(e) => setWithdrawType(e.target.value)}
+            onChange={(e) => {
+              setWithdrawType(e.target.value);
+              setWithdrawAmount("");
+              setDestinationWallet("");
+            }}
           >
             <option value="usd">USD</option>
             <option value="gold">Gold</option>
@@ -467,7 +565,7 @@ const WithdrawSection = ({ user, balance, goldBalance, updateBalance }) => {
 
         <div className="form-group">
           <label htmlFor="withdraw-amount">
-            Amount to Withdraw {withdrawType === "gold" ? "(in grams)" : ""}:
+            Amount to Withdraw {withdrawType === "gold" ? "(in grams)" : "(in USD)"}:
           </label>
           <input
             id="withdraw-amount"
@@ -479,14 +577,17 @@ const WithdrawSection = ({ user, balance, goldBalance, updateBalance }) => {
         </div>
 
         <div className="form-group">
-          <label htmlFor="destination-address">Destination Address:</label>
-          <input
-            id="destination-address"
-            type="text"
-            value={destinationAddress}
-            onChange={(e) => setDestinationAddress(e.target.value)}
-            placeholder="Enter your wallet address"
-          />
+          <label htmlFor="destination-wallet">Destination Wallet:</label>
+          <select
+            id="destination-wallet"
+            value={destinationWallet}
+            onChange={(e) => setDestinationWallet(e.target.value)}
+          >
+            <option value="">Select a wallet</option>
+            {CRYPTO_WALLETS.map((wallet, index) => (
+              <option key={index} value={wallet.type}>{wallet.type}</option>
+            ))}
+          </select>
         </div>
 
         {message.text && (
@@ -501,7 +602,7 @@ const WithdrawSection = ({ user, balance, goldBalance, updateBalance }) => {
         <button
           className="btn-primary"
           onClick={handleWithdraw}
-          disabled={processing}
+          disabled={processing || !withdrawAmount || !destinationWallet}
         >
           {processing ? "Processing..." : "Request Withdrawal"}
         </button>
@@ -510,9 +611,9 @@ const WithdrawSection = ({ user, balance, goldBalance, updateBalance }) => {
       <div className="withdrawal-info">
         <h4>Withdrawal Information:</h4>
         <ul>
-          <li>USD withdrawals are processed within 24 hours</li>
-          <li>Gold withdrawals are converted to USD at current market rates</li>
-          <li>Minimum withdrawal amount: $50 USD or 1g Gold</li>
+          <li>Withdrawals are processed within 24 hours</li>
+          <li>Gold withdrawals are converted to USD at ~${GOLD_PRICE_PER_GRAM}/g</li>
+          <li>Minimum withdrawal: $50 USD or 1g Gold</li>
           <li>Network fees may apply</li>
         </ul>
       </div>
@@ -524,6 +625,7 @@ const WithdrawSection = ({ user, balance, goldBalance, updateBalance }) => {
 const HistorySection = ({ user }) => {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -540,6 +642,10 @@ const HistorySection = ({ user }) => {
         transactionsData.push({ id: doc.id, ...doc.data() });
       });
       setTransactions(transactionsData);
+      setLoading(false);
+    }, (err) => {
+      setError("Failed to load transaction history.");
+      console.error(err);
       setLoading(false);
     });
     
@@ -561,6 +667,10 @@ const HistorySection = ({ user }) => {
     return <div className="section-card">Loading transaction history...</div>;
   }
 
+  if (error) {
+    return <div className="section-card error-message">{error}</div>;
+  }
+
   return (
     <div className="section-card">
       <h2 className="section-title">Transaction History</h2>
@@ -574,8 +684,9 @@ const HistorySection = ({ user }) => {
               <tr>
                 <th>Type</th>
                 <th>Amount</th>
-                <th>Gold</th>
+                <th>Profit/Output</th>
                 <th>Date</th>
+                <th>Next Payment</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -587,17 +698,25 @@ const HistorySection = ({ user }) => {
                       <FaPlusSquare className="icon-deposit" /> : 
                       <FaMinusSquare className="icon-withdraw" />
                     }
-                    {transaction.type}
+                    {transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}
                     {transaction.plan && ` (${transaction.plan})`}
                   </td>
-                  <td>${transaction.amount}</td>
-                  <td>{transaction.percentProfit || "N/A"}</td>
+                  <td>${transaction.amount.toLocaleString()}</td>
+                  <td>{transaction.interest ? `${transaction.interest} (${transaction.profitPercent})` : transaction.profitPercent || "N/A"}</td>
                   <td>
-                    {transaction.timestamp?.toDate().toLocaleDateString()}
+                    {transaction.timestamp?.toDate().toLocaleString()}
+                  </td>
+                  <td>
+                    {transaction.nextPaymentDate ? (
+                      <span className="next-payment">
+                        <FaCalendarAlt style={{ marginRight: "5px" }} />
+                        {transaction.nextPaymentDate.toDate().toLocaleDateString()}
+                      </span>
+                    ) : "N/A"}
                   </td>
                   <td>
                     <span className={`status-indicator ${getStatusClass(transaction.status)}`}>
-                      {transaction.status}
+                      {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
                     </span>
                   </td>
                 </tr>
@@ -611,23 +730,228 @@ const HistorySection = ({ user }) => {
 };
 
 // Component for Referral Section
-const ReferralSection = () => {
+const ReferralSection = ({ user }) => {
+  const referralLink = `https://yourwebsite.com/refer/${user.uid}`;
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(referralLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="section-card">
       <h2 className="section-title">Referral Program</h2>
-      <p>
-        Refer your friends and earn rewards! Share your unique referral link
-        below.
-      </p>
+      <p>Invite friends and earn rewards! Share your unique referral link.</p>
       <div className="referral-container">
         <strong>Your Referral Link:</strong>
-        <p className="referral-link">
-          https://yourwebsite.com/refer/YOUR-UNIQUE-CODE
-        </p>
-        <button className="btn-primary" onClick={() => navigator.clipboard.writeText("https://yourwebsite.com/refer/YOUR-UNIQUE-CODE")}>
-          Copy Link
+        <p className="referral-link">{referralLink}</p>
+        <button className="btn-primary" onClick={handleCopyLink}>
+          {copied ? "Copied!" : "Copy Link"}
         </button>
       </div>
+      <div className="referral-info">
+        <h4>How It Works:</h4>
+        <ul>
+          <li>Share your link with friends</li>
+          <li>Earn 5% bonus on their first deposit</li>
+          <li>Track your referrals in your dashboard</li>
+        </ul>
+      </div>
+    </div>
+  );
+};
+
+// Component for Investments Section
+const InvestmentsSection = ({ user, updateBalance }) => {
+  const [investments, setInvestments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [processing, setProcessing] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    const q = query(
+      collection(db, "transactions"),
+      where("userId", "==", user.uid),
+      where("type", "==", "deposit"),
+      where("status", "==", "completed"),
+      orderBy("timestamp", "desc")
+    );
+    
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const investmentsData = [];
+      querySnapshot.forEach((doc) => {
+        investmentsData.push({ id: doc.id, ...doc.data() });
+      });
+      setInvestments(investmentsData);
+      setLoading(false);
+    }, (err) => {
+      setError("Failed to load investments.");
+      console.error(err);
+      setLoading(false);
+    });
+    
+    return () => unsubscribe();
+  }, [user]);
+
+  const calculateInterest = (investment) => {
+    if (!investment.startDate || !investment.nextPaymentDate) return 0;
+    
+    const now = new Date();
+    const nextPaymentDate = investment.nextPaymentDate.toDate();
+    
+    // Check if it's time to receive interest
+    if (now >= nextPaymentDate) {
+      const interestAmount = (investment.amount * parseFloat(investment.profitPercent)) / 100;
+      return interestAmount;
+    }
+    
+    return 0;
+  };
+
+  const claimInterest = async (investment) => {
+    setProcessing(true);
+    try {
+      const interestAmount = calculateInterest(investment);
+      if (interestAmount <= 0) {
+        setError("No interest available to claim yet.");
+        return;
+      }
+
+      // Update user balance
+      const userRef = doc(db, "users", user.uid);
+      const userDoc = await getDoc(userRef);
+
+      if (userDoc.exists()) {
+        const currentBalance = userDoc.data().balance || 0;
+        const currentGold = userDoc.data().goldBalance || 0;
+        const goldToAdd = interestAmount / GOLD_PRICE_PER_GRAM;
+
+        await updateDoc(userRef, {
+          balance: currentBalance + interestAmount,
+          goldBalance: currentGold + goldToAdd
+        });
+
+        updateBalance(currentBalance + interestAmount, currentGold + goldToAdd);
+      }
+
+      // Update investment with new next payment date
+      const investmentRef = doc(db, "transactions", investment.id);
+      const newNextPaymentDate = new Date();
+      newNextPaymentDate.setDate(newNextPaymentDate.getDate() + investment.duration);
+      
+      await updateDoc(investmentRef, {
+        nextPaymentDate: Timestamp.fromDate(newNextPaymentDate),
+        interestEarned: interestAmount,
+        totalInterestEarned: (investment.totalInterestEarned || 0) + interestAmount
+      });
+
+      // Add interest transaction
+      await addDoc(collection(db, "transactions"), {
+        userId: user.uid,
+        type: "interest",
+        amount: interestAmount,
+        description: `Interest from ${investment.plan}`,
+        status: "completed",
+        timestamp: serverTimestamp()
+      });
+
+      setError(null);
+    } catch (err) {
+      setError("Failed to claim interest. Please try again.");
+      console.error(err);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const formatDate = (timestamp) => {
+    if (!timestamp) return "N/A";
+    return timestamp.toDate().toLocaleDateString();
+  };
+
+  if (loading) {
+    return <div className="section-card">Loading investments...</div>;
+  }
+
+  if (error) {
+    return <div className="section-card error-message">{error}</div>;
+  }
+
+  return (
+    <div className="section-card">
+      <h2 className="section-title">My Investments</h2>
+      
+      {investments.length === 0 ? (
+        <p>No active investments yet.</p>
+      ) : (
+        <div className="investments-container">
+          {investments.map((investment) => {
+            const interestAvailable = calculateInterest(investment);
+            const nextPaymentDate = investment.nextPaymentDate ? investment.nextPaymentDate.toDate() : null;
+            const daysUntilPayment = nextPaymentDate ? Math.ceil((nextPaymentDate - new Date()) / (1000 * 60 * 60 * 24)) : 0;
+            
+            return (
+              <div key={investment.id} className="investment-card">
+                <div className="investment-header">
+                  <h3>{investment.plan}</h3>
+                  <span className="investment-amount">${investment.amount.toLocaleString()}</span>
+                </div>
+                
+                <div className="investment-details">
+                  <div className="investment-detail">
+                    <span className="detail-label">Profit Rate:</span>
+                    <span className="detail-value">{investment.profitPercent}</span>
+                  </div>
+                  
+                  <div className="investment-detail">
+                    <span className="detail-label">Duration:</span>
+                    <span className="detail-value">{investment.duration} days</span>
+                  </div>
+                  
+                  <div className="investment-detail">
+                    <span className="detail-label">Start Date:</span>
+                    <span className="detail-value">{formatDate(investment.startDate)}</span>
+                  </div>
+                  
+                  <div className="investment-detail">
+                    <span className="detail-label">Next Payment:</span>
+                    <span className="detail-value">{formatDate(investment.nextPaymentDate)}</span>
+                  </div>
+                  
+                  <div className="investment-detail">
+                    <span className="detail-label">Days Until Payment:</span>
+                    <span className="detail-value">{daysUntilPayment > 0 ? daysUntilPayment : 0}</span>
+                  </div>
+                  
+                  <div className="investment-detail">
+                    <span className="detail-label">Interest Available:</span>
+                    <span className="detail-value">${interestAvailable.toFixed(2)}</span>
+                  </div>
+                  
+                  <div className="investment-detail">
+                    <span className="detail-label">Total Interest Earned:</span>
+                    <span className="detail-value">${(investment.totalInterestEarned || 0).toFixed(2)}</span>
+                  </div>
+                </div>
+                
+                {interestAvailable > 0 && (
+                  <button
+                    className="btn-primary"
+                    onClick={() => claimInterest(investment)}
+                    disabled={processing}
+                  >
+                    {processing ? "Processing..." : "Claim Interest"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
@@ -641,27 +965,38 @@ const Dashboard = () => {
   const [balance, setBalance] = useState(0);
   const [goldBalance, setGoldBalance] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
       if (u) {
         setUser(u);
-        
-        // Fetch user data
-        const docRef = doc(db, "users", u.uid);
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setUserData(data);
-          setBalance(data.balance || 0);
-          setGoldBalance(data.goldBalance || 0);
-        }
+        const userRef = doc(db, "users", u.uid);
+        const unsubscribeUser = onSnapshot(userRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setUserData(data);
+            setBalance(data.balance || 0);
+            setGoldBalance(data.goldBalance || 0);
+            setLoading(false);
+          } else {
+            setError("User data not found.");
+            setLoading(false);
+          }
+        }, (err) => {
+          setError("Failed to load user data.");
+          console.error(err);
+          setLoading(false);
+        });
+
+        return () => unsubscribeUser();
       } else {
         navigate("/login");
       }
     });
-    return () => unsubscribe();
+
+    return () => unsubscribeAuth();
   }, [navigate]);
 
   const updateBalance = (newBalance, newGoldBalance) => {
@@ -675,11 +1010,16 @@ const Dashboard = () => {
       navigate("/login");
     } catch (error) {
       console.error("Logout error:", error.message);
+      setError("Failed to logout. Please try again.");
     }
   };
 
-  if (!user || !userData) {
+  if (loading) {
     return <div className="loading">Loading...</div>;
+  }
+
+  if (error || !user || !userData) {
+    return <div className="error-message">{error || "Failed to load dashboard."}</div>;
   }
 
   const renderContent = () => {
@@ -694,12 +1034,12 @@ const Dashboard = () => {
             </div>
             <div className="card">
               <h3>Gold Holdings</h3>
-              <p className="metric">{goldBalance}g</p>
+              <p className="metric">{goldBalance.toFixed(2)}g</p>
               <p className="subtext">Pure Gold</p>
             </div>
             <div className="card">
               <h3>Total Value</h3>
-              <p className="metric">${(balance + (goldBalance * 300)).toLocaleString()}</p>
+              <p className="metric">${(balance + (goldBalance * GOLD_PRICE_PER_GRAM)).toLocaleString()}</p>
               <p className="subtext">Based on current gold prices</p>
             </div>
 
@@ -708,10 +1048,10 @@ const Dashboard = () => {
               <ul className="activity-list">
                 <li><FaCheckCircle className="activity-icon" /> Account created <span className="activity-time">1 week ago</span></li>
                 {balance > 0 && (
-                  <li><FaCheckCircle className="activity-icon" /> Deposit of ${balance} <span className="activity-time">Recently</span></li>
+                  <li><FaCheckCircle className="activity-icon" /> Deposit of ${balance.toLocaleString()} <span className="activity-time">Recently</span></li>
                 )}
                 {goldBalance > 0 && (
-                  <li><FaCheckCircle className="activity-icon" /> Purchased {goldBalance}g of gold <span className="activity-time">Recently</span></li>
+                  <li><FaCheckCircle className="activity-icon" /> Purchased {goldBalance.toFixed(2)}g of gold <span className="activity-time">Recently</span></li>
                 )}
               </ul>
             </div>
@@ -723,8 +1063,10 @@ const Dashboard = () => {
         return <WithdrawSection user={user} balance={balance} goldBalance={goldBalance} updateBalance={updateBalance} />;
       case "history":
         return <HistorySection user={user} />;
+      case "investments":
+        return <InvestmentsSection user={user} updateBalance={updateBalance} />;
       case "referral":
-        return <ReferralSection />;
+        return <ReferralSection user={user} />;
       case "profile":
         return <ProfileSection user={user} />;
       case "settings":
@@ -771,6 +1113,15 @@ const Dashboard = () => {
             }}
           >
             <FaMinusSquare /> <span>Withdraw</span>
+          </li>
+          <li
+            className={`nav-item ${activeSection === "investments" ? 'nav-item-active' : ''}`}
+            onClick={() => {
+              setActiveSection("investments");
+              setMobileMenuOpen(false);
+            }}
+          >
+            <FaCoins /> <span>My Investments</span>
           </li>
           <li
             className={`nav-item ${activeSection === "history" ? 'nav-item-active' : ''}`}
@@ -826,7 +1177,7 @@ const Dashboard = () => {
             </h1>
           </div>
           <span className="user-info">
-            Balance: <strong>${balance}</strong> | Gold: <strong>{goldBalance}g</strong>
+            Balance: <strong>${balance.toLocaleString()}</strong> | Gold: <strong>{goldBalance.toFixed(2)}g</strong>
           </span>
         </div>
         <div className="content-area">{renderContent()}</div>
@@ -1237,6 +1588,12 @@ const Dashboard = () => {
   box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
 }
 
+.btn-primary:disabled {
+  background: #bdc3c7;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .btn-secondary {
   padding: 12px 24px;
   background: white;
@@ -1336,7 +1693,7 @@ const Dashboard = () => {
 }
 
 .plan-description {
-  color: #7f8c8d;
+  color: 7f8c8d;
   margin: 12px 0;
   line-height: 1.5;
 }
@@ -1351,6 +1708,13 @@ const Dashboard = () => {
   text-align: center;
   word-break: break-all;
   font-family: 'Courier New', monospace;
+}
+
+.deposit-address button {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .receipt-container {
@@ -1501,6 +1865,79 @@ const Dashboard = () => {
   color: #004085;
 }
 
+.next-payment {
+  display: flex;
+  align-items: center;
+  color: #3498db;
+  font-size: 14px;
+}
+
+/* Investments Section */
+.investments-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 25px;
+  margin-top: 20px;
+}
+
+.investment-card {
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  padding: 25px;
+  border-radius: 16px;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+  border: 1px solid rgba(255,255,255,0.5);
+  transition: all 0.3s ease;
+}
+
+.investment-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+}
+
+.investment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.investment-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 18px;
+}
+
+.investment-amount {
+  font-size: 20px;
+  font-weight: 700;
+  color: #27ae60;
+}
+
+.investment-details {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.investment-detail {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.detail-label {
+  font-weight: 600;
+  color: #7f8c8d;
+}
+
+.detail-value {
+  font-weight: 600;
+  color: #2c3e50;
+}
+
 /* Referral Section */
 .referral-container {
   padding: 25px;
@@ -1520,6 +1957,24 @@ const Dashboard = () => {
   background: white;
   border-radius: 8px;
   border: 1px solid #e9ecef;
+}
+
+.referral-info {
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px solid #e9ecef;
+}
+
+.referral-info ul {
+  margin: 15px 0 0 0;
+  padding-left: 20px;
+}
+
+.referral-info li {
+  margin-bottom: 8px;
+  color: #7f8c8d;
 }
 
 /* Activity List */
@@ -1647,6 +2102,10 @@ const Dashboard = () => {
     grid-template-columns: 1fr;
   }
   
+  .investments-container {
+    grid-template-columns: 1fr;
+  }
+  
   .profile-grid {
     grid-template-columns: 1fr;
   }
@@ -1712,6 +2171,12 @@ const Dashboard = () => {
   .transactions-table th,
   .transactions-table td {
     padding: 12px 8px;
+  }
+  
+  .investment-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
   }
 }
 
